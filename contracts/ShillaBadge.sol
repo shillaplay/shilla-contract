@@ -56,15 +56,13 @@ contract ShillaBadge is ERC721, Ownable {
     function mint(uint8 badgeLevel, address to) external returns (uint256 id) {
         require(isDistributor[msg.sender], "Access denied");
         require(to != address(0), "Invalid address");
-        require(badgeLevel > 0, "No badge specified");
+        require(badgeLevel > 0 && badgeLevel <= lastBadgeId, "Invalid badge specified");
         require(badges[badgeLevel].maxSupply > badges[badgeLevel].totalMinted, "Max exceeded");
-        //require(token.balanceOf(to) >= badges[badgeLevel].minShillaRequired, "Low tokens balance");
         
-        id = ++lastBadgeId;
-        _mint(to, id);
-
         badges[badgeLevel].totalMinted++;
+        id = ++lastBadgeId;
         badgeLevelOf[id] = badgeLevel;
+        _mint(to, id);
     }
 
     function _addDistributor(address account) external onlyOwner {
