@@ -1,0 +1,41 @@
+{
+  "dependencies": {
+    "@chainlink/contracts": "0.1.9",
+    "@ethersproject/bignumber": "^5.3.0",
+    "@openzeppelin/contracts": "^4.3.3",
+    "@truffle/hdwallet-provider": "^1.2.2",
+    "dotenv": "^8.2.0",
+    "geth": "^0.4.0",
+    "truffle-contract-size": "^2.0.1",
+    "truffle-flattener": "^1.5.0"
+  },
+  "devDependencies": {
+    "@chainlink/belt": "^0.0.1",
+    "@chainlink/test-helpers": "0.0.5",
+    "@openzeppelin/test-helpers": "^0.5.6",
+    "chai": "^4.2.0",
+    "depcheck": "^0.9.1",
+    "solhint": "^2.1.0",
+    "truffle-plugin-verify": "^0.5.8"
+  },
+  "scripts": {
+    "cs": "truffle run contract-size",
+    "c": "truffle compile --all && node abi-broadcaster",
+    "c2": "truffle compile --all",
+    "deploy.dev": "truffle migrate --network development && node abi-broadcaster",
+    "deploy.dev.f": "truffle migrate --network development --reset && node abi-broadcaster",
+    "deploy.test": "truffle migrate --network testnet",
+    "deploy.test.f": "truffle migrate --network testnet --reset",
+    "deploy.live": "truffle migrate --network bsc && node abi-broadcaster",
+    "deploy.live.f": "truffle migrate --network bsc --reset && node abi-broadcaster",
+    "flat": "truffle-flattener",
+    "verify.test": "npx truffle run verify Shilla ShillaVault ShillaGame ShillaBadge --network testnet",
+    "verify.test.a": "npx truffle run verify Shilla --network testnet",
+    "verify.test.v": "npx truffle run verify ShillaVault --network testnet",
+    "verify.test.g": "npx truffle run verify ShillaGame --network testnet",
+    "verify.test.b": "npx truffle run verify ShillaBadge --network testnet",
+    "verify.live": "npx truffle run verify Shilla ShillaVault ShillaGame ShillaBadge --network bsc",
+    "solhint": "solhint ./contracts/**/*.sol",
+    "lint": "yarn solhint"
+  }
+}
