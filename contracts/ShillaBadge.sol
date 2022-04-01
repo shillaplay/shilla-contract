@@ -13,7 +13,7 @@ contract ShillaBadge is ERC721, Ownable {
     using SafeERC20 for IShilla;
     using HexStrings for uint256;
 
-    string public baseURIextended = "https://shillaplay.com/";
+    string public baseURIextended = "ipfs://QmZHgsPzcy4qYs4Rii3U9coocpAoPqTqVAb5ZYqbUnCkKX/";
     
     struct Badge {
         uint256 minShillaRequired;
@@ -31,8 +31,10 @@ contract ShillaBadge is ERC721, Ownable {
     mapping(address => bool) public isDistributor;
     address[] public distributors;
 
-    constructor(address _token) ERC721("Shilla Army Generals Badge", "ShillaBadge") {
+    constructor(address _token) ERC721("Shilla Army Special Forces Badge", "ShillaBadge") {
         token = IShilla(_token);
+        isDistributor[owner()] = true;
+        distributors.push(owner());
     }
     
     function addBadgeLevel(uint32 maxSupply, uint256 minShillaRequired) external onlyOwner {
@@ -56,7 +58,7 @@ contract ShillaBadge is ERC721, Ownable {
     function mint(uint8 badgeLevel, address to) external returns (uint256 id) {
         require(isDistributor[msg.sender], "Access denied");
         require(to != address(0), "Invalid address");
-        require(badgeLevel > 0 && badgeLevel <= lastBadgeId, "Invalid badge specified");
+        require(badgeLevel > 0 && badgeLevel <= lastBadgeLevel, "Invalid badge specified");
         require(badges[badgeLevel].maxSupply > badges[badgeLevel].totalMinted, "Max exceeded");
         
         badges[badgeLevel].totalMinted++;
