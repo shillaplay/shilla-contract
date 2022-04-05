@@ -287,29 +287,16 @@ contract Shilla is IERC20, Ownable {
         }
     }
 
-    function exludedState(address account) public view returns(
-        bool isExcludedFromFee, 
-        bool maxSellFromExcluded, 
-        bool maxSellToExcluded
-    ) {
-        isExcludedFromFee = _isExcludedFromFee[account];
-        maxSellFromExcluded = _maxSellFromExcluded[account];
-        maxSellToExcluded = _maxSellToExcluded[account];
-    }
-
     function refIdRegErrorsFor(address userOfId, uint256 shillerID) external view returns (
-        bool idProvided, bool invalidId, bool userIsOwner, bool idNotActivated
+        bool idProvided, bool invalidId
     ) {
         idProvided = shillerOf[userOfId] != address(0);
         invalidId = shillerID == 0 || shillerID > lastID;
-        userIsOwner = holderOfID[shillerID] == userOfId;
-        idNotActivated = shillerID != 1 && shillerOf[holderOfID[shillerID]] == address(0);
     }
 
     function provideShiller(uint256 shillerID) external {
         require(shillerOf[msg.sender] == address(0), 'shillerID already provided');
         require(shillerID > 0 && shillerID <= lastID, 'Invalid shilerID');
-        require(holderOfID[shillerID] != msg.sender, "You can't be your own shiller");
         lastID++;
         IDof[msg.sender] = lastID;
         holderOfID[lastID] = msg.sender;

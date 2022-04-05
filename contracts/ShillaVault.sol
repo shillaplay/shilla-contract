@@ -42,8 +42,7 @@ contract ShillaVault is Ownable {
     uint256 public locksCount;
     uint256 public totalDeposits;
     uint256 public totalProfits;
-
-    uint256 public minStakeAmount = 1;
+    
     uint256 public vaultsBalance;
 
     //Holds rewards not allocated to some vaults due to absense of stakes in them
@@ -123,7 +122,7 @@ contract ShillaVault is Ownable {
 
     function stake(address _withdrawer, uint256 _amount, uint256 _lockId) external returns (uint256 _id) {
         require(lock[_lockId].exists, 'Invalid lock!');
-        require(_amount >= minStakeAmount, 'Token amount too low!');
+        require(_amount > 0, 'No amount staked!');
         token.safeTransferFrom(msg.sender, address(this), _amount);
 
         totalDeposits = totalDeposits + _amount;
@@ -132,12 +131,13 @@ contract ShillaVault is Ownable {
         lock[_lockId].totalDeposits = lock[_lockId].totalDeposits + _amount;
         _id = ++depositsCount;
 
-        //updateDividends(_id);
+        //updateDividends stake dividends to its latest lock dividends
+        // so that the stake doesn't share in the dividends shared before the stake was made
         lockedToken[_id].lastDividendPoints = lock[_lockId].totalDividendPoints;
         lockedToken[_id].withdrawer = _withdrawer;
         lockedToken[_id].balance = _amount;
         lockedToken[_id].lockId = _lockId;
-        lockedToken[_id].unlockTimestamp = block.timestamp/* + lock[_lockId].unlockTimestampInterval*/;
+        lockedToken[_id].unlockTimestamp = block.timestamp + lock[_lockId].unlockTimestampInterval;
         //lockedToken[_id].withdrawn = false;
         lockedToken[_id].deposited = true;
         
@@ -148,10 +148,6 @@ contract ShillaVault is Ownable {
 
     function unstake(uint256 _id) external {
         require(block.timestamp >= lockedToken[_id].unlockTimestamp, 'Tokens still locked!');
-        _unstake(_id);
-    }
-
-    function _unstakeTest(uint256 _id) external onlyOwner {
         _unstake(_id);
     }
 
@@ -330,6 +326,9 @@ contract ShillaVault is Ownable {
         lockedToken[id].lastDividendPoints = lock[lockedToken[id].lockId].totalDividendPoints;
     }
 
+    //returns stake dividends with calculation APPROXIMATION_EXTENSION.
+    //APPROXIMATION_EXTENSION is a constant which is multiplied with a value before dividing it 
+    //in order to avoid loss of the resulting value due to solidity approximation
     function _dividendsApproxOwing(uint256 id) private view returns(uint) {
         uint256 newDividendPoints = lock[lockedToken[id].lockId].totalDividendPoints - lockedToken[id].lastDividendPoints;
         return lockedToken[id].balance * newDividendPoints;
