@@ -18,16 +18,14 @@ contract Shilla is IERC20, Ownable {
     
     //1 billion
     uint256 private _totalSupply = 1000 * 10**6 * 10**9;
-    uint256 public shillerWageTaxFee = 10;//(100 * 10) / 1000 =>     1% 
-    uint256 public shillerDiscountTaxFee = 30;//(100 * 30) / 1000 => 3%
-    uint256 public vaultTaxFee = 29;//(100 * 29) / 1000 =>           2.9%
-    uint256 public burnTaxFee = 1;//(100 * 1) / 1000 =>              0.1%
-    //-------------TOTAL FEES MAX------------------------------------------
-    uint256 public MAX_FEES = 70;//(100 * 70) / 1000 =>              7%
+    uint256 public shillerWageTaxFee = 10;
+    uint256 public shillerDiscountTaxFee = 30;
+    uint256 public vaultTaxFee = 29;
+    uint256 public burnTaxFee = 1;
+    uint256 public MAX_FEES = 70;
 
     uint256 public lastID;
-    //0.5% of the total supply => 5 million
-    uint256 constant MAX_SELL_FLOOR = 5 * 10**6 * 10**9;
+    uint256 constant MAX_SELL_FLOOR = 5 * 10**6 * 10**9;//0.5% of the total supply
     uint256 public maxSellPerDay = MAX_SELL_FLOOR;
     
     bool public taxDisabled;
@@ -53,7 +51,7 @@ contract Shilla is IERC20, Ownable {
     mapping (uint256 => address) public holderOfID;
     mapping (address => address) public shillerOf;
     mapping (address => uint256) public totalShillEarningsOf;
-    mapping(address => uint256) public totalShillsOf;
+    mapping(address => uint256) public totalShilledToOf;
     
     event ShillerProvided(address indexed shiller, address indexed referral);
     event ShillWagePaid(address indexed shiller, address indexed referral, uint256 amount);
@@ -170,7 +168,7 @@ contract Shilla is IERC20, Ownable {
     ) private updateHolders(from, to) {
         require(from != address(0), "ERC20: transfer from the zero address");
         require(to != address(0), "ERC20: transfer to the zero address");
-        require(amount > 0, "ERC20: Transfer amount must be greater than zero");  
+        require(amount > 0, "Transfer amount must be greater than zero");  
         
         if(!maxSellDisabled && !_maxSellFromExcluded[from] && !_maxSellToExcluded[to]) {
             if(block.timestamp - lastSellDayOf[from] > (1 days)) {
@@ -188,7 +186,12 @@ contract Shilla is IERC20, Ownable {
 
         emit Transfer(from, to, amount);
     }
-
+(
+    uint256 shillerWage, 
+    uint256 shillerDiscount, 
+    uint256 vaultTax, 
+    uint256 burnTax, 
+    uint256 remainder) = _getFees(amount);
     function _getFees(uint256 amount) internal view returns (
         uint256 shillerWage, 
         uint256 shillerDiscount, 
@@ -199,103 +202,92 @@ contract Shilla is IERC20, Ownable {
               shillerDiscount = (shillerDiscountTaxFee * amount) / 1000;
               vaultTax = (vaultTaxFee * amount) / 1000;
               burnTax = (burnTaxFee * amount) / 1000;
-              remainder = amount - (shillerWage + shillerDiscount + vaultTax + burnTax);
+              remainder = amount - (shillerWage + shillerDiscount + burnTax + vaultTax);
     }
     
-    function _shillaBothWage(address from, address to, uint256 shillerWage) internal {
+    function _shareWage(address from, address to, uint256 shillerWage) internal {
         //Credit the shiller of "from"
         uint256 fromShare = shillerWage / 2;
         _balanceOf[shillerOf[from]] = _balanceOf[shillerOf[from]] + fromShare;
         totalShillEarningsOf[shillerOf[from]] = totalShillEarningsOf[shillerOf[from]] + fromShare;
         emit ShillWagePaid(shillerOf[from], from, fromShare);
-        emit Transfer(address(this), shillerOf[from], fromShare);
         
         //Credit the shiller of "to"
         uint256 toShare = shillerWage - fromShare;
         _balanceOf[shillerOf[to]] = _balanceOf[shillerOf[to]] + toShare;
         totalShillEarningsOf[shillerOf[to]] = totalShillEarningsOf[shillerOf[to]] + toShare;
         emit ShillWagePaid(shillerOf[to], to, toShare);
-        emit Transfer(address(this), shillerOf[to], toShare);
     }
 
-    function _shillaToWage(address to, uint256 shillerWage) internal {
+    function _shareWage2(address to, uint256 shillerWage) internal {
         _balanceOf[shillerOf[to]] = _balanceOf[shillerOf[to]] + shillerWage;
         totalShillEarningsOf[shillerOf[to]] = totalShillEarningsOf[shillerOf[to]] + shillerWage;
         emit ShillWagePaid(shillerOf[to], to, shillerWage);
-        emit Transfer(address(this), shillerOf[to], shillerWage);
     }
 
-    function _shillaFromWage(address from, uint256 shillerWage) internal {
+    function _shareWage3(address from, uint256 shillerWage) internal {
         _balanceOf[shillerOf[from]] = _balanceOf[shillerOf[from]] + shillerWage;
         totalShillEarningsOf[shillerOf[from]] = totalShillEarningsOf[shillerOf[from]] + shillerWage;
         emit ShillWagePaid(shillerOf[from], from, shillerWage);
-        emit Transfer(address(this), shillerOf[from], shillerWage);
     }
 
     function _takeFees(
         address from,
         address to,
         uint256 amount
-    ) internal updateHolders(address(0), shillerOf[to]) updateHolders(address(0), shillerOf[from]) returns (uint256 rem) {
+    ) internal returns (uint256 rem) {
         rem = amount;
         if(!taxDisabled && !_isExcludedFromFee[from] && !_isExcludedFromFee[to]) {
             (uint256 shillerWage, uint256 shillerDiscount, uint256 vaultTax, uint256 burnTax, uint256 remainder) = _getFees(amount);
-            
-            rem = remainder;
-            //If both the sender and receiver has a shiller
+            uint256 thisBalanceUp = vaultTax;
+            //If this receiver has a shiller
             if(shillerOf[to] != address(0) && shillerOf[from] != address(0)) {
                 //Share the wage between both's referrers
-                _shillaBothWage(from, to, shillerWage);
+                _shareWage(from, to, shillerWage);
                 
                 //Increase the amount the recipient gets. This implies a reduction in tax for the sender/receiver
-                rem = rem + shillerDiscount;
-                shillerWage = 0;
-            } 
-            //If the recipient has a shiller instead
-            else if(shillerOf[to] != address(0)) {
+                remainder = remainder + shillerDiscount;
+            } else if(shillerOf[to] != address(0)) {
                 //Credit the shiller
-                 _shillaToWage(to, shillerWage);
+                 _shareWage2(to, shillerWage);
                 
                 //Increase the amount the recipient gets. this implies a reduction in tax for the sender/receiver
-                rem = rem + shillerDiscount;
-                shillerWage = 0;
+                remainder = remainder + shillerDiscount;
             }
             //If the sender has a shiller instead
             else if(shillerOf[from] != address(0)) {
                 //Credit the shiller
-                _shillaFromWage(from, shillerWage);
+                _shareWage3(from, shillerWage);
                 
                 //Increase the amount the recipient gets. this implies a reduction in tax for the sender/receiver
-                rem = rem + shillerDiscount;
-                shillerWage = 0;
+                remainder = remainder + shillerDiscount;
 
             } //If the sender && recipient are contracts instead, that is wallets that cannot have a shiller, 
             //add the wage and discount to the vault
             else if(from.isContract() && to.isContract()) {
                 vaultTax = vaultTax + shillerWage + shillerDiscount;
-                shillerWage = 0;
+                thisBalanceUp = vaultTax;
 
-            } 
-            //If the recipient is a normal wallet and not a contract, 
-            //accumulate the wage until a shillaID is provided, while the shillerDiscount is sent to the vault
+            } //If the recipient is a normal wallet and not a contract
             else if(!to.isContract()) {
                 shillerWagesOf[to] = shillerWagesOf[to] + shillerWage;
                 vaultTax = vaultTax + shillerDiscount;
+                thisBalanceUp = vaultTax + shillerWage;
 
-            }  
-            //If the sender is a normal wallet and not a contract
-            //accumulate the wage until a shillaID is provided, while the shillerDiscount is sent to the vault
+            }  //If the sender is a normal wallet and not a contract
             else {
                 shillerWagesOf[from] = shillerWagesOf[from] + shillerWage;
                 vaultTax = vaultTax + shillerDiscount;
+                thisBalanceUp = vaultTax + shillerWage;
             }
 
+            _balanceOf[address(this)] = _balanceOf[address(this)] + thisBalanceUp + burnTax;
             burnBalance += burnTax;
-
-            _balanceOf[address(this)] = _balanceOf[address(this)] + shillerWage + vaultTax + burnTax;
 
             _approve(address(this), address(shillaVault), vaultTax);
             shillaVault.diburseProfits(vaultTax);
+
+            rem = remainder;
         }
     }
 
@@ -306,7 +298,7 @@ contract Shilla is IERC20, Ownable {
         invalidId = shillerID == 0 || shillerID > lastID;
     }
 
-    function provideShiller(uint256 shillerID) external updateHolders(address(this), holderOfID[shillerID]) {
+    function provideShiller(uint256 shillerID) external {
         require(shillerOf[msg.sender] == address(0), 'shillerID already provided');
         require(shillerID > 0 && shillerID <= lastID, 'Invalid shilerID');
         lastID++;
@@ -314,16 +306,14 @@ contract Shilla is IERC20, Ownable {
         holderOfID[lastID] = msg.sender;
 
         shillerOf[msg.sender] = holderOfID[shillerID];
-        totalShillsOf[holderOfID[shillerID]] = totalShillsOf[holderOfID[shillerID]] + 1;
+        totalShilledToOf[holderOfID[shillerID]] = totalShilledToOf[holderOfID[shillerID]] + 1;
         emit ShillerProvided(holderOfID[shillerID], msg.sender);
 
-        //Pay all the shiller wages accumulated by the shiller ID provider/referral to the shiller
         if(shillerWagesOf[msg.sender] > 0) {
             _balanceOf[address(this)] = _balanceOf[address(this)].sub(shillerWagesOf[msg.sender]);
             _balanceOf[holderOfID[shillerID]] = _balanceOf[holderOfID[shillerID]] + shillerWagesOf[msg.sender];
             totalShillEarningsOf[holderOfID[shillerID]] = totalShillEarningsOf[holderOfID[shillerID]]  + shillerWagesOf[msg.sender];
             emit ShillWagePaid(holderOfID[shillerID], msg.sender, shillerWagesOf[msg.sender]);
-            emit Transfer(address(this), holderOfID[shillerID], shillerWagesOf[msg.sender]);
             shillerWagesOf[msg.sender] = 0;
         }
     }
@@ -389,23 +379,23 @@ contract Shilla is IERC20, Ownable {
     }
 
     function _setShillerWageFeePercent(uint256 taxFee) external onlyOwner() {
+        require(taxFee + shillerDiscountTaxFee + vaultTaxFee + burnTaxFee <= MAX_FEES);
         shillerWageTaxFee = taxFee;
-        require(shillerWageTaxFee + shillerDiscountTaxFee + vaultTaxFee + burnTaxFee <= MAX_FEES);
     }
 
     function _setShillerDisountFeePercent(uint256 taxFee) external onlyOwner() {
+        require(taxFee + shillerWageTaxFee + vaultTaxFee + burnTaxFee <= MAX_FEES);
         shillerDiscountTaxFee = taxFee;
-        require(shillerWageTaxFee + shillerDiscountTaxFee + vaultTaxFee + burnTaxFee <= MAX_FEES);
     }
 
     function _setVaultFeePercent(uint256 taxFee) external onlyOwner() {
+        require(taxFee + shillerDiscountTaxFee + shillerWageTaxFee + burnTaxFee <= MAX_FEES);
         vaultTaxFee = taxFee;
-        require(shillerWageTaxFee + shillerDiscountTaxFee + vaultTaxFee + burnTaxFee <= MAX_FEES);
     }
 
     function _setBurnFeePercent(uint256 taxFee) external onlyOwner() {
+        require(taxFee + shillerDiscountTaxFee + vaultTaxFee + shillerWageTaxFee <= MAX_FEES);
         burnTaxFee = taxFee;
-        require(shillerWageTaxFee + shillerDiscountTaxFee + vaultTaxFee + burnTaxFee <= MAX_FEES);
     }
 
     function _setTaxDisabled(bool v) external onlyOwner() {
