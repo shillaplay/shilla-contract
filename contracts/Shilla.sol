@@ -236,7 +236,7 @@ contract Shilla is IERC20, Ownable {
         address from,
         address to,
         uint256 amount
-    ) internal updateHolders(address(0), shillerOf[to]) updateHolders(address(0), shillerOf[from]) returns (uint256 rem) {
+    ) internal returns (uint256 rem) {
         rem = amount;
         if(!taxDisabled && !_isExcludedFromFee[from] && !_isExcludedFromFee[to]) {
             (uint256 shillerWage, uint256 shillerDiscount, uint256 vaultTax, uint256 burnTax, uint256 remainder) = _getFees(amount);
@@ -306,7 +306,7 @@ contract Shilla is IERC20, Ownable {
         invalidId = shillerID == 0 || shillerID > lastID;
     }
 
-    function provideShiller(uint256 shillerID) external updateHolders(address(this), holderOfID[shillerID]) {
+    function provideShiller(uint256 shillerID) external {
         require(shillerOf[msg.sender] == address(0), 'shillerID already provided');
         require(shillerID > 0 && shillerID <= lastID, 'Invalid shilerID');
         lastID++;

@@ -23,7 +23,8 @@ contract ShillaVault is Ownable {
         uint256 weight;
         uint256 weightDivisor;
         uint256 totalDeposits;
-        uint256 totalProfits;
+        uint256 totalProfitsApprox;
+        uint256 totalDividendPoints;
     }
     struct Items {
         uint256 id;
@@ -41,9 +42,11 @@ contract ShillaVault is Ownable {
     uint256 public locksCount;
     uint256 public totalDeposits;
     uint256 public totalProfits;
-    uint256 public totalDividendPoints;
     
-    uint256 public vaultsROIBalance;
+    uint256 public vaultsBalance;
+
+    //Holds rewards not allocated to some vaults due to absense of stakes in them
+    uint256 public unAllocatedRewards;
 
     mapping (uint256 => Lock) private lock;
     mapping (uint256 => Items) private lockedToken;
@@ -54,7 +57,7 @@ contract ShillaVault is Ownable {
 
     uint256 constant APPROXIMATION_EXTENSION = 10**18;
     event LockCreated(uint256 indexed lockId, uint256 indexed unlockInterval, uint256 indexed weight, uint256 weightDivisor);
-    event DividendUpdated(uint256 totalDividendPoints);
+    event DividendUpdated(uint256 indexed lockId, uint256 totalDividendPoints);
     event DepositUpdated(address indexed withdrawer, uint256 indexed lockId, uint256 totalDeposits);
     event Deposit(address indexed withdrawer, uint256 indexed stakeId, uint256 indexed lockId, uint256 amount, uint256 unlockTime, uint256 lastDividendPoints);
     event Withdraw(address indexed withdrawer, uint256 indexed stakeId, uint256 amount);
@@ -123,18 +126,19 @@ contract ShillaVault is Ownable {
         token.safeTransferFrom(msg.sender, address(this), _amount);
 
         totalDeposits = totalDeposits + _amount;
-        vaultsROIBalance = vaultsROIBalance + _amount;
+        vaultsBalance = vaultsBalance + _amount;
         totalDepositsOf[_withdrawer] = totalDepositsOf[_withdrawer] + _amount;
         lock[_lockId].totalDeposits = lock[_lockId].totalDeposits + _amount;
         _id = ++depositsCount;
 
         //updateDividends stake dividends to its latest lock dividends
         // so that the stake doesn't share in the dividends shared before the stake was made
-        lockedToken[_id].lastDividendPoints = totalDividendPoints;
+        lockedToken[_id].lastDividendPoints = lock[_lockId].totalDividendPoints;
         lockedToken[_id].withdrawer = _withdrawer;
         lockedToken[_id].balance = _amount;
         lockedToken[_id].lockId = _lockId;
         lockedToken[_id].unlockTimestamp = block.timestamp + lock[_lockId].unlockTimestampInterval;
+        //lockedToken[_id].withdrawn = false;
         lockedToken[_id].deposited = true;
         
         lockedTokensOf[_withdrawer].push(_id);
@@ -144,9 +148,6 @@ contract ShillaVault is Ownable {
 
     function unstake(uint256 _id) external {
         require(block.timestamp >= lockedToken[_id].unlockTimestamp, 'Tokens still locked!');
-        _unstake(_id);
-    }
-    function unstakeTest(uint256 _id) external onlyOwner {
         _unstake(_id);
     }
 
@@ -159,7 +160,6 @@ contract ShillaVault is Ownable {
 
     //Burn unallocated rewards
     function _burnUnAllocatedRewards(uint256 amount) external onlyOwner {
-        uint256 unAllocatedRewards =  _getUnAllocatedRewards();
         require(unAllocatedRewards >= amount, "Insufficient unallocated rewards");
         unAllocatedRewards -= amount;
         require(token.burn(amount), "Failed to burn rewards");
@@ -167,56 +167,24 @@ contract ShillaVault is Ownable {
 
     //Diburse unallocated rewards
     function _diburseUnAllocatedRewards(uint256 amount) external onlyOwner {
-        uint256 unAllocatedRewards =  _getUnAllocatedRewards();
         require(unAllocatedRewards >= amount, "Insufficient unallocated rewards");
         unAllocatedRewards -= amount;
         _diburseProfits(amount);
-    }
-
-    function _getUnAllocatedRewards() private view returns (uint256) {
-        return token.balanceOf(address(this)) - vaultsROIBalance;
-    }
-
-    function getUnAllocatedRewards() external view returns (uint256) {
-        return _getUnAllocatedRewards();
     }
 
     function getLock(uint256 id) external view returns (
         uint256 unlockTimestampInterval, 
         uint256 weight, 
         uint256 weightDivisor,
-        uint256 deposit,
-        uint256 profit) {
+        uint256 deposits,
+        uint256 profitsApprox,
+        uint256 dividendPoints) {
         unlockTimestampInterval = lock[id].unlockTimestampInterval;
         weight = lock[id].weight;
         weightDivisor = lock[id].weightDivisor;
-        deposit = lock[id].totalDeposits;
-        profit = lock[id].totalProfits;
-    }
-
-    function getLocks() external view returns (
-        uint256[] memory idList,
-        uint256[] memory unlockTimestampIntervals, 
-        uint256[] memory weights, 
-        uint256[] memory weightDivisors,
-        uint256[] memory deposits,
-        uint256[] memory profits) {
-        
-        idList = new uint256[](lockList.length);
-        unlockTimestampIntervals = new uint256[](lockList.length);
-        weights = new uint256[](lockList.length);
-        weightDivisors = new uint256[](lockList.length);
-        deposits = new uint256[](lockList.length);
-        profits = new uint256[](lockList.length);
-
-        for(uint8 i = 0; i <= lockList.length; i++) {
-            idList[i] = lockList[i];
-            unlockTimestampIntervals[i] = lock[idList[i]].unlockTimestampInterval;
-            weights[i] = lock[idList[i]].weight;
-            weightDivisors[i] = lock[idList[i]].weightDivisor;
-            deposits[i] = lock[idList[i]].totalDeposits;
-            profits[i] = lock[idList[i]].totalProfits;
-        }
+        deposits = lock[id].totalDeposits;
+        profitsApprox = lock[id].totalProfitsApprox;
+        dividendPoints = lock[id].totalDividendPoints;
     }
 
     //Get total number of stakes currently done by @staker
@@ -229,11 +197,12 @@ contract ShillaVault is Ownable {
         return 0;
     }
 
-    //Get total rewards of all tokens currently staked by @staker
+    //Get total rewqards of all tokens currently staked by @staker
     function totalRewardsOfStakesBy(address staker) external view returns (uint256 roi) {
         for (uint256 i = 0; i < lockedTokensOf[staker].length; i++) {
-            roi += _dividendsOwing(lockedTokensOf[msg.sender][i]);
+            roi += _dividendsApproxOwing(lockedTokensOf[msg.sender][i]);
         }
+        roi /= APPROXIMATION_EXTENSION;
     }
 
     //Get the total amount deposited in the stake referenced by @stakeId
@@ -253,7 +222,7 @@ contract ShillaVault is Ownable {
 
     //Get the total amount deposited in the vault referenced by @lockId + reward so far
     function lockStakesROIAt(uint256 lockId) external view returns (uint256) {
-        return lock[lockId].totalDeposits + lock[lockId].totalProfits;
+        return lock[lockId].totalDeposits + (lock[lockId].totalProfitsApprox / APPROXIMATION_EXTENSION);
     }
 
     function _unstake(uint256 _id) private {
@@ -263,21 +232,22 @@ contract ShillaVault is Ownable {
 
         lockedToken[_id].withdrawn = true;
 
-        uint256 profits = _dividendsOwing(_id);
+        uint256 profitsApprox = _dividendsApproxOwing(_id);
+        uint256 profits = profitsApprox / APPROXIMATION_EXTENSION;
 
-        lock[lockedToken[_id].lockId].totalProfits = lock[lockedToken[_id].lockId].totalProfits.zSub(profits);
+        lock[lockedToken[_id].lockId].totalProfitsApprox = lock[lockedToken[_id].lockId].totalProfitsApprox.zSub(profitsApprox);
         totalProfits = totalProfits.zSub(profits);
 
         uint256 withdrawal = lockedToken[_id].balance + profits;
 
-        if(vaultsROIBalance < withdrawal) {
-            withdrawal = vaultsROIBalance;
+        if(vaultsBalance < withdrawal) {
+            withdrawal = vaultsBalance;
         }
-        vaultsROIBalance = vaultsROIBalance - withdrawal;
+        vaultsBalance = vaultsBalance.zSub(withdrawal);
 
-        totalDeposits = totalDeposits - lockedToken[_id].balance;
-        totalDepositsOf[msg.sender] = totalDepositsOf[msg.sender] - lockedToken[_id].balance;
-        lock[lockedToken[_id].lockId].totalDeposits = lock[lockedToken[_id].lockId].totalDeposits - lockedToken[_id].balance;
+        totalDeposits = totalDeposits.zSub(lockedToken[_id].balance);
+        totalDepositsOf[msg.sender] = totalDepositsOf[msg.sender].zSub(lockedToken[_id].balance);
+        lock[lockedToken[_id].lockId].totalDeposits = lock[lockedToken[_id].lockId].totalDeposits.zSub(lockedToken[_id].balance);
         emit DepositUpdated(msg.sender, lockedToken[_id].lockId, lock[lockedToken[_id].lockId].totalDeposits);
 
         for (uint256 i = 0; i < lockedTokensOf[msg.sender].length; i++) {
@@ -293,29 +263,79 @@ contract ShillaVault is Ownable {
     }
 
     function _diburseProfits(uint256 amount) private {
-        if(totalDeposits > 0) {
-            totalDividendPoints += (amount * APPROXIMATION_EXTENSION) / totalDeposits;
-            uint256 amountUsed;
-            uint256 lockShare;
+        //Code to diburse the profits
+        if(totalDeposits == 0) {
+            unAllocatedRewards += amount;
 
-            for (uint8 i = 0; i < lockList.length; i++) {
+        } else {
+            uint256 points;
+            uint256 point;
+            uint256 usedPoints;
+            uint256 usedProfitsApprox;
+            uint256 profitsApprox;
+            for (uint8 i = 0; i < lockList.length - 1; i++) {
+                //stakeShare = (stakeDeposit * amount * weight) / totalDeposits
+                point = (amount * lock[lockList[i]].weight * APPROXIMATION_EXTENSION) / (totalDeposits * lock[lockList[i]].weightDivisor);
+                
                 if(lock[lockList[i]].totalDeposits > 0) {
-                    lockShare = (amount * lock[lockList[i]].totalDeposits * lock[lockList[i]].weight) / (totalDeposits * lock[lockList[i]].weightDivisor);
-                    lock[lockList[i]].totalProfits += lockShare;
-                    amountUsed += lockShare;
+                    lock[lockList[i]].totalDividendPoints += point;
+                    profitsApprox = (lock[lockList[i]].totalDeposits * point)/* / APPROXIMATION_EXTENSION*/;
+                    lock[lockList[i]].totalProfitsApprox += profitsApprox;
+                    usedPoints += point;
+                    usedProfitsApprox += profitsApprox;
+                    emit DividendUpdated(lockList[i], lock[lockList[i]].totalDividendPoints);
                 }
                 
+                points += point;
+                
+            }
+            //the totalWeights = the total number of locks
+            point = ((amount * locksCount * APPROXIMATION_EXTENSION) / totalDeposits) - points;
+            
+            if(lock[lockList[lockList.length - 1]].totalDeposits > 0) {
+                lock[lockList[lockList.length - 1]].totalDividendPoints += point;
+                profitsApprox = (lock[lockList[lockList.length - 1]].totalDeposits * point)/* / APPROXIMATION_EXTENSION*/;
+                lock[lockList[lockList.length - 1]].totalProfitsApprox += profitsApprox;
+                usedPoints += point;
+                usedProfitsApprox += profitsApprox;
+                emit DividendUpdated(lockList[lockList.length - 1], lock[lockList[lockList.length - 1]].totalDividendPoints);
             }
 
-            totalProfits += amountUsed;
-            vaultsROIBalance += amountUsed;
-            emit DividendUpdated(totalDividendPoints);
+            points += point;
+
+            //If there are vaults with no stake inside, their share of the rewards get saved somewhere 
+            // where the dev can ONLY later burn it
+            if(usedPoints < points) {
+                uint256 usedProfits = (usedProfitsApprox / APPROXIMATION_EXTENSION);
+                unAllocatedRewards += (amount - usedProfits);
+                totalProfits += usedProfits;
+                vaultsBalance += usedProfits;
+
+            } else {
+                totalProfits += amount;
+                vaultsBalance += amount;
+            }
         }
     }
-    
+
+    function updateDividends(uint256 id) private {
+        uint256 owing = _dividendsOwing(id);
+        if(owing > 0) {
+            lockedToken[id].balance += owing;
+        }
+        lockedToken[id].lastDividendPoints = lock[lockedToken[id].lockId].totalDividendPoints;
+    }
+
+    //returns stake dividends with calculation APPROXIMATION_EXTENSION.
+    //APPROXIMATION_EXTENSION is a constant which is multiplied with a value before dividing it 
+    //in order to avoid loss of the resulting value due to solidity approximation
+    function _dividendsApproxOwing(uint256 id) private view returns(uint) {
+        uint256 newDividendPoints = lock[lockedToken[id].lockId].totalDividendPoints - lockedToken[id].lastDividendPoints;
+        return lockedToken[id].balance * newDividendPoints;
+    }
+
     function _dividendsOwing(uint256 id) private view returns(uint) {
-        uint256 newDividendPoints = totalDividendPoints - lockedToken[id].lastDividendPoints;
-        return (lockedToken[id].balance * newDividendPoints * lock[lockedToken[id].lockId].weight) / (lock[lockedToken[id].lockId].weightDivisor * APPROXIMATION_EXTENSION);
+        return _dividendsApproxOwing(id) / APPROXIMATION_EXTENSION;
     }
     
 }
