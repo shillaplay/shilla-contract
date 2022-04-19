@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./IShilla.sol";
-import "./IShillaGame.sol";
 
 library ZeroSub {
     function zSub (uint256 a, uint256 b) internal pure returns (uint256) {
@@ -146,9 +145,6 @@ contract ShillaVault is Ownable {
         require(block.timestamp >= lockedToken[_id].unlockTimestamp, 'Tokens still locked!');
         _unstake(_id);
     }
-    function unstakeTest(uint256 _id) external onlyOwner {
-        _unstake(_id);
-    }
 
     //Called by the token with tax, games with vault's profit share, any utility dapp that makes profits in the ecosystem, 
     // or anyone that feels like giving back to the community :)
@@ -209,7 +205,7 @@ contract ShillaVault is Ownable {
         deposits = new uint256[](lockList.length);
         profits = new uint256[](lockList.length);
 
-        for(uint8 i = 0; i <= lockList.length; i++) {
+        for(uint8 i = 0; i < lockList.length; i++) {
             idList[i] = lockList[i];
             unlockTimestampIntervals[i] = lock[idList[i]].unlockTimestampInterval;
             weights[i] = lock[idList[i]].weight;
@@ -232,7 +228,7 @@ contract ShillaVault is Ownable {
     //Get total rewards of all tokens currently staked by @staker
     function totalRewardsOfStakesBy(address staker) external view returns (uint256 roi) {
         for (uint256 i = 0; i < lockedTokensOf[staker].length; i++) {
-            roi += _dividendsOwing(lockedTokensOf[msg.sender][i]);
+            roi += _dividendsOwing(lockedTokensOf[staker][i]);
         }
     }
 
@@ -269,7 +265,7 @@ contract ShillaVault is Ownable {
         totalProfits = totalProfits.zSub(profits);
 
         uint256 withdrawal = lockedToken[_id].balance + profits;
-
+        
         if(vaultsROIBalance < withdrawal) {
             withdrawal = vaultsROIBalance;
         }
@@ -294,13 +290,14 @@ contract ShillaVault is Ownable {
 
     function _diburseProfits(uint256 amount) private {
         if(totalDeposits > 0) {
-            totalDividendPoints += (amount * APPROXIMATION_EXTENSION) / totalDeposits;
+            uint256 point = (amount * APPROXIMATION_EXTENSION) / totalDeposits;
+            totalDividendPoints += point;
             uint256 amountUsed;
             uint256 lockShare;
 
             for (uint8 i = 0; i < lockList.length; i++) {
                 if(lock[lockList[i]].totalDeposits > 0) {
-                    lockShare = (amount * lock[lockList[i]].totalDeposits * lock[lockList[i]].weight) / (totalDeposits * lock[lockList[i]].weightDivisor);
+                    lockShare = _pointToRewardShare(point, lockList[i], lock[lockList[i]].totalDeposits);
                     lock[lockList[i]].totalProfits += lockShare;
                     amountUsed += lockShare;
                 }
@@ -313,9 +310,13 @@ contract ShillaVault is Ownable {
         }
     }
     
-    function _dividendsOwing(uint256 id) private view returns(uint) {
+    function _dividendsOwing(uint256 id) private view returns(uint256) {
         uint256 newDividendPoints = totalDividendPoints - lockedToken[id].lastDividendPoints;
-        return (lockedToken[id].balance * newDividendPoints * lock[lockedToken[id].lockId].weight) / (lock[lockedToken[id].lockId].weightDivisor * APPROXIMATION_EXTENSION);
+        return _pointToRewardShare(newDividendPoints, lockedToken[id].lockId, lockedToken[id].balance);
+    }
+
+    function _pointToRewardShare(uint256 point, uint256 lockId, uint256 balance) private view returns(uint256) {
+        return (balance * point * lock[lockId].weight) / (lock[lockId].weightDivisor * APPROXIMATION_EXTENSION);
     }
     
 }

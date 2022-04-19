@@ -12,9 +12,9 @@ contract Shilla is IERC20, Ownable {
     using Address for address;
     using SafeMath for uint256;
 
-    string private _name = "Shillaplay";
-    string private _symbol = "SHILLA";
-    uint8 private _decimals = 9;
+    string public name = "Shillaplay";
+    string public symbol = "SHILLA";
+    uint8 public decimals = 9;
     
     //1 billion
     uint256 private _totalSupply = 1000 * 10**6 * 10**9;
@@ -93,18 +93,6 @@ contract Shilla is IERC20, Ownable {
         _maxSellToExcluded[address(this)] = true;
         
         emit Transfer(address(0), owner(), _totalSupply);
-    }
-
-    function name() public view returns (string memory) {
-        return _name;
-    }
-
-    function symbol() public view returns (string memory) {
-        return _symbol;
-    }
-
-    function decimals() public view returns (uint8) {
-        return _decimals;
     }
 
     function totalSupply() public view returns (uint256) {

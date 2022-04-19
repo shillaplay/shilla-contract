@@ -68,10 +68,11 @@
       gasPrice: 50000000000//default: 20000000000 (20 Gwei)
      },
      bsc: {
-       provider: () => new HDWalletProvider(mnemonic, `https://bsc-dataseed1.binance.org`),
+       provider: () => new HDWalletProvider(mnemonic, `wss://bsc-ws-node.nariox.org:443`),
        network_id: 56,
        chainId: 56,
        confirmations: 10,
+       networkCheckTimeoutnetworkCheckTimeout: 10000,
        timeoutBlocks: 200,
        skipDryRun: true
      },
