@@ -3,17 +3,17 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "./IShillaVault.sol";
 import "./HexStrings.sol";
 import "./IShilla.sol";
 import "./ShillaGameLib.sol";
+import "./ERC721Leasable.sol";
 
 interface ITokenURI {
     function tokenURI(uint256 gameId) external view returns(string memory);
 }
 
-contract ShillaGame is ERC721, Ownable {
+contract ShillaGame is ERC721Leasable, Ownable {
     using SafeERC20 for IShilla;
     using HexStrings for uint256;
     using HexStrings for address;
@@ -50,7 +50,6 @@ contract ShillaGame is ERC721, Ownable {
     struct Game {
         uint256 id;
         uint256 bank;
-        address owner;
         uint256 entryPrice;
         uint256 entryPriceNoDecimals;
         uint256 countDownDuration;
@@ -174,11 +173,11 @@ contract ShillaGame is ERC721, Ownable {
     mapping(address => uint256[]) private gamesOf;
 
     modifier onlyGameOwner(uint256 gameId) {
-        require(msg.sender == games[gameId].owner, "1");
+        require(msg.sender == ERC721Leasable.ownerOf(gameId), "1");
         _;
     }
 
-    constructor(address _token, address _shillaVault, uint8 _tokenDecimals) ERC721("Shilla Game", "SHILLAGAME") {
+    constructor(address _token, address _shillaVault, uint8 _tokenDecimals) ERC721Leasable("Shilla Game", "SHILLAGAME") {
         token = IShilla(_token);
         shillaVault = IShillaVault(_shillaVault);
         tokenDecimals = _tokenDecimals;
@@ -362,6 +361,7 @@ contract ShillaGame is ERC721, Ownable {
     }
     
     function burn(uint256 gameId) external {
+        _burnGame(gameId);
         _burn(gameId);
     }
     
@@ -415,7 +415,7 @@ contract ShillaGame is ERC721, Ownable {
         uint256 totalProfits,
         uint256 bank
     ) {
-        owner = games[gameId].owner;
+        owner = ERC721Leasable.ownerOf(gameId);
         entryPrice = games[gameId].entryPrice;
         countDownDuration = games[gameId].countDownDuration;
         primaryWinnerPercentage = games[gameId].primaryWinnerPercentage;
@@ -520,18 +520,6 @@ contract ShillaGame is ERC721, Ownable {
         return gameData;
     }
     
-    function _beforeTokenTransfer(
-        address from,
-        address to,
-        uint256 gameId
-    ) internal virtual override {
-        super._beforeTokenTransfer(from, to, gameId);
-        games[gameId].owner = to;
-        if (to == address(0)) {
-            _burnGame(gameId);
-        }
-    }
-    
     function _shareBank(uint256 gameId) private {
         (uint256 vaultPortion, uint256 ownerPortion, uint256 primaryWinnerPortion, uint256 secondaryWinnerPortion) 
         = _splitBank(gameId);
@@ -560,14 +548,14 @@ contract ShillaGame is ERC721, Ownable {
             if(ownerPortionNow > 0 || ownerPortionWhenOver > 0) {
                 if(ownerPortionNow > 0) {
                     tvl = tvl - ownerPortionNow;
-                    token.safeTransfer(games[gameId].owner, ownerPortionNow);
+                    token.safeTransfer(ERC721Leasable.ownerOf(gameId), ownerPortionNow);
                     
                 }
                 if(ownerPortionWhenOver > 0) {
                     games[gameId].session.ownerFee = games[gameId].session.ownerFee + ownerPortionWhenOver;
                 }
 
-                emit HouseFeeSent(gameId, games[gameId].owner, games[gameId].totalSessions, ownerPortionNow, games[gameId].session.ownerFee);
+                emit HouseFeeSent(gameId, ERC721Leasable.ownerOf(gameId), games[gameId].totalSessions, ownerPortionNow, games[gameId].session.ownerFee);
             }
 
             games[gameId].session.totalProfits = games[gameId].session.totalProfits + portion;
@@ -587,7 +575,7 @@ contract ShillaGame is ERC721, Ownable {
         //handle game burning here
         _diburseGameBank(gameId);
         if(games[gameId].bank > 0) {
-            token.safeTransfer(games[gameId].owner, games[gameId].bank);
+            token.safeTransfer(ERC721Leasable.ownerOf(gameId), games[gameId].bank);
             tvl = tvl - games[gameId].bank;
         }
         
@@ -645,9 +633,9 @@ contract ShillaGame is ERC721, Ownable {
                 tvl = tvl - fee;
                 games[gameId].session.ownerFee = 0;
 
-                token.safeTransfer(games[gameId].owner, fee);
+                token.safeTransfer(ERC721Leasable.ownerOf(gameId), fee);
 
-                if(msg.sender == games[gameId].owner) {
+                if(msg.sender == ERC721Leasable.ownerOf(gameId)) {
                     emit HouseFeeClaimed(gameId, msg.sender, games[gameId].totalSessions, fee, 0);
 
                 } else {

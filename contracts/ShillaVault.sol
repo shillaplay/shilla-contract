@@ -65,8 +65,9 @@ contract ShillaVault is Ownable {
         lock[locksCount].exists = true;
         //3_day
         lock[locksCount].unlockTimestampInterval = 3 days;
-        lock[locksCount].weight = 60;
-        lock[locksCount].weightDivisor = 10000;
+        //weights/weightDivisor = 0.09375 => 1.5625%
+        lock[locksCount].weight = 9375;
+        lock[locksCount].weightDivisor = 100000;
         lockList.push(locksCount);
         emit LockCreated(1, lock[locksCount].unlockTimestampInterval, lock[locksCount].weight, lock[locksCount].weightDivisor);
 
@@ -74,8 +75,9 @@ contract ShillaVault is Ownable {
         lock[locksCount].exists = true;
         //1_week
         lock[locksCount].unlockTimestampInterval = 7 days;
-        lock[locksCount].weight = 294;
-        lock[locksCount].weightDivisor = 10000;
+        //weights/weightDivisor = 0.21875 => 3.6458333333333335%
+        lock[locksCount].weight = 21875;
+        lock[locksCount].weightDivisor = 100000;
         lockList.push(locksCount);
         emit LockCreated(2, lock[locksCount].unlockTimestampInterval, lock[locksCount].weight, lock[locksCount].weightDivisor);
 
@@ -83,8 +85,9 @@ contract ShillaVault is Ownable {
         lock[locksCount].exists = true;
         //2_week
         lock[locksCount].unlockTimestampInterval = 14 days;
-        lock[locksCount].weight = 1104;
-        lock[locksCount].weightDivisor = 10000;
+        //weights/weightDivisor = 0.4375 => 7.291666666666667%
+        lock[locksCount].weight = 43750;
+        lock[locksCount].weightDivisor = 100000;
         lockList.push(locksCount);
         emit LockCreated(3, lock[locksCount].unlockTimestampInterval, lock[locksCount].weight, lock[locksCount].weightDivisor);
 
@@ -92,8 +95,9 @@ contract ShillaVault is Ownable {
         lock[locksCount].exists = true;
         //1_month
         lock[locksCount].unlockTimestampInterval = 28 days;
-        lock[locksCount].weight = 4266;
-        lock[locksCount].weightDivisor = 10000;
+        //weights/weightDivisor = 0.875 => 14.583333333333334%
+        lock[locksCount].weight = 87500;
+        lock[locksCount].weightDivisor = 100000;
         lockList.push(locksCount);
         emit LockCreated(4, lock[locksCount].unlockTimestampInterval, lock[locksCount].weight, lock[locksCount].weightDivisor);
 
@@ -101,8 +105,9 @@ contract ShillaVault is Ownable {
         lock[locksCount].exists = true;
         //2_month
         lock[locksCount].unlockTimestampInterval = 56 days;
-        lock[locksCount].weight = 16769;
-        lock[locksCount].weightDivisor = 10000;
+        //weights/weightDivisor = 1.75 => 29.166666666666668%
+        lock[locksCount].weight = 175000;
+        lock[locksCount].weightDivisor = 100000;
         lockList.push(locksCount);
         emit LockCreated(5, lock[locksCount].unlockTimestampInterval, lock[locksCount].weight, lock[locksCount].weightDivisor);
 
@@ -110,8 +115,9 @@ contract ShillaVault is Ownable {
         lock[locksCount].exists = true;
         //3_month
         lock[locksCount].unlockTimestampInterval = 84 days;
-        lock[locksCount].weight = 37505;
-        lock[locksCount].weightDivisor = 10000;
+        //weights/weightDivisor = 2.625 => 43.75%
+        lock[locksCount].weight = 262500;
+        lock[locksCount].weightDivisor = 100000;
         lockList.push(locksCount);
         emit LockCreated(6, lock[locksCount].unlockTimestampInterval, lock[locksCount].weight, lock[locksCount].weightDivisor);
     }
