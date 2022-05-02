@@ -63,6 +63,7 @@ contract ShillaGame is ERC721Leasable, Ownable {
     }
     
     struct GameData {
+        address gameOwner;
         string svgBg1;
         string svgBg2;
         string light;
@@ -195,7 +196,7 @@ contract ShillaGame is ERC721Leasable, Ownable {
         require(ownerPercentage > 0, "p1");
         require(primaryWinnerPercentage > 0, "p2");
         require(secondaryWinnerPercentage > 0, "p3");
-        require((ownerPercentage + primaryWinnerPercentage + secondaryWinnerPercentage) == 100, "Invalid percentages");
+        require((ownerPercentage + primaryWinnerPercentage + secondaryWinnerPercentage) == 100, "ip");
 
         id = ++lastGameId;
         games[id].id = id;
@@ -256,7 +257,7 @@ contract ShillaGame is ERC721Leasable, Ownable {
         if(secondaryWinnerPercentage > 0) {
             games[gameId].secondaryWinnerPercentage = secondaryWinnerPercentage;
         }
-        require((games[gameId].ownerPercentage + games[gameId].primaryWinnerPercentage + games[gameId].secondaryWinnerPercentage) == 100, "Invalid percentages");
+        require((games[gameId].ownerPercentage + games[gameId].primaryWinnerPercentage + games[gameId].secondaryWinnerPercentage) == 100, "ip2");
 
         emit GameUpdated(gameId, games[gameId].entryPrice, games[gameId].countDownDuration, games[gameId].ownerPercentage, games[gameId].primaryWinnerPercentage, games[gameId].secondaryWinnerPercentage);
     }
@@ -389,20 +390,6 @@ contract ShillaGame is ERC721Leasable, Ownable {
         minGameBank = amountNoDecimals * 10**tokenDecimals;
     }
     
-    function gamePlayInfo(uint256 gameId) external view returns(
-        uint256 startBlock, 
-        uint256 endBlock,
-        uint256 entryPrice,
-        uint256 reserveBank,
-        bool awaitingPlayers
-    ) {
-        startBlock = games[gameId].session.startBlock;
-        endBlock = games[gameId].session.endBlock;
-        entryPrice = games[gameId].entryPrice;
-        reserveBank = games[gameId].bank;
-        awaitingPlayers = games[gameId].session.awaitingPlayers;
-    }
-
     function gameInfo(uint256 gameId) external view returns(
         address owner,
         uint256 entryPrice,
@@ -496,6 +483,7 @@ contract ShillaGame is ERC721Leasable, Ownable {
     
     function randomOne(uint256 gameId) internal view returns (GameData memory) {
         GameData memory gameData;
+        gameData.gameOwner = ERC721Leasable.ownerOf(gameId);
         gameData.svgBg1 = numToColorHex(random(string(abi.encodePacked(ra,gameId.toString()))),136);
         gameData.svgBg2 = numToColorHex(random(string(abi.encodePacked(ra2,gameId.toString()))),136);
         gameData.light = _gameIsActive(gameId)? "#0f0" : "transparent";

@@ -69,7 +69,7 @@ library ShillaGameLib {
         return string(str);
     }
     
-    function genSVG(ShillaGame.Game memory game, ShillaGame.GameData memory gameData) internal view returns (string memory) {
+    function genSVG(ShillaGame.Game memory game, ShillaGame.GameData memory gameData) internal pure returns (string memory) {
 
         string memory o;
         {
@@ -78,7 +78,7 @@ library ShillaGameLib {
             o = string(abi.encodePacked(o,svg1,svg2,svg3));
         }
         {
-            o = string(abi.encodePacked(o,ca,address(this).addressToString(),light,gameData.light));
+            o = string(abi.encodePacked(o,ca,gameData.gameOwner.addressToString(),light,gameData.light));
             o = string(abi.encodePacked(o,gameName,gameIdT,game.id.toString()));
         }
 
@@ -103,7 +103,7 @@ library ShillaGameLib {
         return o;
     }
 
-    function tokenURI(uint256 gameId, string memory baseURIextended, ShillaGame.Game memory game, ShillaGame.GameData memory gameData) external view returns (string memory) {
+    function tokenURI(uint256 gameId, string memory baseURIextended, ShillaGame.Game memory game, ShillaGame.GameData memory gameData) external pure returns (string memory) {
         return string(abi.encodePacked(jsonDataUrl,Base64.encode(bytes(string(abi.encodePacked(jsonDataId,gameId.toString(),jsonExtUrl,baseURIextended,gameId.toString(),jsonDataImage,Base64.encode(bytes(genSVG(game, gameData))),jsonDataClose))))));
     }
 }

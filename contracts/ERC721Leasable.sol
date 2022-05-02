@@ -12,12 +12,18 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
  * {ERC721Enumerable}.
  */
 contract ERC721Leasable is ERC721 {
+    // Mapping from account to a map of token ID to lease request duration
+    mapping(address => mapping(uint256 => uint256)) private _durations;
+    // Mapping owner address to token lease count count
+    mapping(address => uint256) private _leaseOf;
+    // Mapping from token ID to lease
+    mapping(uint256 => Lease) private _leaseFor;
 
-    // Mapping from token ID to leaser address
-    mapping(uint256 => address) private _leasers;
-
-    // Mapping from token ID to lease duration
-    mapping(uint256 => uint256) private _leaseExpiries;
+    struct Lease {
+        address from;
+        address to;
+        uint256 expiry;
+    }
 
     /**
      * @dev Initializes the contract by setting a `name` and a `symbol` to the token collection.
@@ -25,35 +31,96 @@ contract ERC721Leasable is ERC721 {
     constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) {
     }
 
-    function _isApprovedOrOwner(address spender, uint256 tokenId) internal override view returns (bool) {
-        //No ownership actions such as transfer, burn, approve... can occur during lease
-        if(_leasers[tokenId] != address(0)) {
-            return _leasers[tokenId] == spender && _leaseExpiries[tokenId] <= block.timestamp;
-
-        } else {
-            require(_exists(tokenId), "ERC721Leasable: operator query for nonexistent token");
-            address owner = ERC721.ownerOf(tokenId);
-            return (spender == owner || getApproved(tokenId) == spender || isApprovedForAll(owner, spender));
+    modifier claimLease(address claimer, uint256 tokenId) {
+        //If the token is a lease, both the leaser and the leasee must be sent to the block below
+        //for scrutiny
+        if(_leaseFor[tokenId].from != address(0)) {
+            //Then the claimer has to be the leaser, and the lease expiry time must has elapsed.
+            //This means since a leasee/claimer won't be the leaser/_leaseFor[tokenId].from,
+            //The leasee can't transfer or approve a leased token.
+            //Also, the leaser can't transfer or approve either until the lease has expired
+            require(claimer == _leaseFor[tokenId].from && _leaseFor[tokenId].expiry <= block.timestamp, "1");
+            _transfer(_leaseFor[tokenId].to, _leaseFor[tokenId].from, tokenId);
+            _leaseFor[tokenId].from = address(0);
+            _leaseFor[tokenId].to = address(0);
+            _leaseFor[tokenId].expiry = 0;
+            _leaseOf[claimer] = _leaseOf[claimer] - 1;
         }
-        
+        _;
+    }
+
+    modifier beforeLease(
+        address from,
+        address to,
+        uint256 tokenId,
+        uint256 duration
+    ) {
+        //To be more sure the receiver is aware of the lease, so to decrease the odds of malicous owners 
+        // making ownership transfer deals while delivering lease instead.
+        require(duration > 0 && _durations[to][tokenId] == duration, "2");
+        //To avoid a user's ERC721Leasable.balanceOf increasing by 2 when a lease to same accounts occurs
+        //This can be fixed by checking if the from and to are the same when updating the _leaseOf,
+        //but there's no point in doing so. It will only cost normal users more gas fees.
+        require(from != to, "3");
+
+        _leaseFor[tokenId].from = from;
+        _leaseFor[tokenId].to = to;
+        _leaseFor[tokenId].expiry = block.timestamp + duration;
+        _leaseOf[from] = _leaseOf[from] + 1;
+
+        _durations[to][tokenId] = 0;
+        _;
+    }
+
+    function requestLease(uint256 tokenId, uint256 duration) public virtual {
+        require(_exists(tokenId), "2.1");
+        _durations[_msgSender()][tokenId] = duration;
+    }
+
+    function leaseRequestOf(address account, uint256 tokenId) public virtual view returns(uint256) {
+        require(_exists(tokenId), "2.2");
+        return _durations[account][tokenId];
     }
 
     /**
-     * @dev See {IERC721-ownerOf}.
+     * @dev See {ERC721-approve}.
      */
-    function ownerOf(uint256 tokenId) public virtual override view returns (address) {
-        if(_leasers[tokenId] != address(0) && _leaseExpiries[tokenId] <= block.timestamp) {
-            return _leasers[tokenId];
-        }
-        return super.ownerOf(tokenId);
-    }
-
-    /**
-     * @dev See {IERC721-approve}.
-     */
-    function approve(address to, uint256 tokenId) public virtual override {
-        require(_leasers[tokenId] == address(0), "ERC721Leasable: Can't approve a token on lease");
+    function approve(address to, uint256 tokenId) public virtual override claimLease(_msgSender(), tokenId) {
         super.approve(to, tokenId);
+    }
+
+    /**
+     * @dev See {ERC721-safeTransferFrom}.
+     */
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 tokenId
+    ) public virtual override {
+        safeTransferFrom(from, to, tokenId, "");
+    }
+
+    /**
+     * @dev See {ERC721-safeTransferFrom}.
+     */
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 tokenId,
+        bytes memory _data
+    ) public virtual override claimLease(from, tokenId) {
+        super.safeTransferFrom(from, to, tokenId, _data);
+    }
+
+    /**
+     * @dev See {ERC721-transferFrom}.
+     */
+    function transferFrom(
+        address from,
+        address to,
+        uint256 tokenId
+    ) public virtual override claimLease(from, tokenId) {
+        super.transferFrom(from, to, tokenId);
     }
 
     function leaseFrom(
@@ -61,42 +128,30 @@ contract ERC721Leasable is ERC721 {
         address to,
         uint256 tokenId,
         uint256 duration
-    ) public virtual {
-        require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721Leasable: token on lease or transfer caller is not owner nor approved");
-
-        _transfer(from, to, tokenId);
-        _leasers[tokenId] = from;
-        _leaseExpiries[tokenId] = duration;
-
+    ) public virtual claimLease(from, tokenId) beforeLease(from, to, tokenId, duration) {
+        super.transferFrom(from, to, tokenId);
     }
 
-    /**
-     * @dev Hook that is called before any token transfer. This includes minting
-     * and burning.
-     *
-     * Calling conditions:
-     *
-     * - When `from` and `to` are both non-zero, ``from``'s `tokenId` will be
-     * transferred to `to`.
-     * - When `from` is zero, `tokenId` will be minted for `to`.
-     * - When `to` is zero, ``from``'s `tokenId` will be burned.
-     * - `from` and `to` are never both zero.
-     *
-     * To learn more about hooks, head to xref:ROOT:extending-contracts.adoc#using-hooks[Using Hooks].
-     */
-    function _beforeTokenTransfer(
-        address from,
-        address to,
-        uint256 tokenId
-    ) internal virtual override {
-        super._beforeTokenTransfer(from, to, tokenId);
-        if(_leasers[tokenId] != address(0)) {
-            _leasers[tokenId] = address(0);
+    function leaseInfo(uint256 tokenId) public virtual view returns (address from, address to, uint256 expiry) {
+        from = _leaseFor[tokenId].from;
+        to = _leaseFor[tokenId].to;
+        expiry = _leaseFor[tokenId].expiry;
+    }
+
+    function leaseOf(address owner) public view virtual returns (uint256) {
+        require(owner != address(0), "4");
+        return _leaseOf[owner];
+    }
+
+    function ownerOf(uint256 tokenId) public virtual override view returns (address) {
+        if(_leaseFor[tokenId].from != address(0) && _leaseFor[tokenId].expiry <= block.timestamp) {
+            return _leaseFor[tokenId].from;
         }
+        return ERC721.ownerOf(tokenId);
     }
-
-    function isOnLease(uint256 tokenId) public virtual view returns (bool) {
-        return _leasers[tokenId] != address(0);
-    } 
+    
+    function balanceOf(address owner) public view virtual override returns (uint256 balance) {
+        return ERC721.balanceOf(owner) + _leaseOf[owner];
+    }
 
 }
